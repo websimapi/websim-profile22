@@ -225,6 +225,14 @@ body {
                     <div id="views-count" class="stat-value">-</div>
                     <div class="stat-label">Views</div>
                 </div>
+                <div class="stat">
+                    <div id="liked-projects-count" class="stat-value">-</div>
+                    <div class="stat-label">Liked Projects</div>
+                </div>
+                <div class="stat">
+                    <div id="history-count" class="stat-value">-</div>
+                    <div class="stat-label">History</div>
+                </div>
             </div>
         </div>
     </div>
@@ -251,6 +259,8 @@ let isLoading = false;
 let totalProjects = 0;
 let totalLikes = 0;
 let totalViews = 0;
+let totalLikedProjects = 0;
+let totalHistory = 0;
 let currentSearch = '';
 let currentTab = 'projects';
 const USERNAME = 'api';
@@ -264,8 +274,12 @@ async function loadProfile() {
     username.textContent = `@${USERNAME}`;
     username.classList.remove('skeleton');
     
-    await loadAllProjectStats();
-    loadContent();
+    // Load all stats in parallel
+    await Promise.all([
+        loadAllProjectStats(),
+        loadLikedProjectsCount(),
+        loadHistoryCount()
+    ]);
 }
 
 async function loadAllProjectStats() {
@@ -307,10 +321,74 @@ async function loadAllProjectStats() {
     }
 }
 
+async function loadLikedProjectsCount() {
+    let cursor = null;
+    totalLikedProjects = 0;
+    
+    while (true) {
+        const params = new URLSearchParams({
+            first: 100
+        });
+        
+        if (cursor) {
+            params.append('after', cursor);
+        }
+        
+        try {
+            const response = await fetch(`/api/v1/users/${USERNAME}/likes?${params}`);
+            const data = await response.json();
+            
+            totalLikedProjects += data.likes.data.length;
+            updateStatsDisplay();
+            
+            if (!data.likes.meta.has_next_page) {
+                break;
+            }
+            cursor = data.likes.meta.end_cursor;
+        } catch (error) {
+            console.error('Error loading liked projects count:', error);
+            break;
+        }
+    }
+}
+
+async function loadHistoryCount() {
+    let cursor = null;
+    totalHistory = 0;
+    
+    while (true) {
+        const params = new URLSearchParams({
+            first: 100
+        });
+        
+        if (cursor) {
+            params.append('after', cursor);
+        }
+        
+        try {
+            const response = await fetch(`/api/v1/users/${USERNAME}/projects?${params}`);
+            const data = await response.json();
+            
+            totalHistory += data.projects.data.length;
+            updateStatsDisplay();
+            
+            if (!data.projects.meta.has_next_page) {
+                break;
+            }
+            cursor = data.projects.meta.end_cursor;
+        } catch (error) {
+            console.error('Error loading history count:', error);
+            break;
+        }
+    }
+}
+
 function updateStatsDisplay() {
     document.getElementById('projects-count').textContent = totalProjects;
     document.getElementById('likes-count').textContent = totalLikes;
     document.getElementById('views-count').textContent = totalViews;
+    document.getElementById('liked-projects-count').textContent = totalLikedProjects;
+    document.getElementById('history-count').textContent = totalHistory;
 }
 
 async function loadContent() {
