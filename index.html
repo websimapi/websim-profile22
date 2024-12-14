@@ -1,0 +1,291 @@
+<html><head><base href="https://websim.ai">
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+body {
+    background: #f5f5f5;
+    color: #333;
+}
+
+.profile-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.construction-banner {
+    background: #ff9800;
+    color: white;
+    padding: 10px;
+    width: 100%;
+    overflow: hidden;
+    position: fixed;
+    top: 0;
+    z-index: 1000;
+}
+
+.sliding-text {
+    white-space: nowrap;
+    animation: slide 20s linear infinite;
+}
+
+.profile-header {
+    background: white;
+    border-radius: 12px;
+    padding: 30px;
+    margin-top: 50px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 30px;
+}
+
+.avatar {
+    width: 120px;
+    height: 120px;
+    border-radius: 60px;
+    object-fit: cover;
+}
+
+.stats {
+    display: flex;
+    gap: 30px;
+    margin-top: 20px;
+}
+
+.stat {
+    text-align: center;
+}
+
+.stat-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: #2196F3;
+}
+
+.stat-label {
+    color: #666;
+    font-size: 14px;
+}
+
+.projects-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+    margin-top: 30px;
+}
+
+.project-card {
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    transition: transform 0.2s;
+}
+
+.project-card:hover {
+    transform: translateY(-5px);
+}
+
+.project-image {
+    width: 100%;
+    height: 200px;
+    object-fit: cover;
+}
+
+.project-info {
+    padding: 15px;
+}
+
+.project-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.project-stats {
+    display: flex;
+    gap: 15px;
+    font-size: 14px;
+    color: #666;
+}
+
+.loading {
+    text-align: center;
+    padding: 20px;
+    font-size: 18px;
+    color: #666;
+}
+
+.load-more {
+    background: #2196F3;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 6px;
+    cursor: pointer;
+    margin: 30px auto;
+    display: block;
+    font-size: 16px;
+}
+
+.load-more:hover {
+    background: #1976D2;
+}
+
+@keyframes slide {
+    0% { transform: translateX(100%); }
+    100% { transform: translateX(-100%); }
+}
+
+.skeleton {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+</style>
+</head>
+<body>
+<div class="construction-banner">
+    <div class="sliding-text">🚧 Coming Soon... Profile Under Construction 🚧</div>
+</div>
+
+<div class="profile-container">
+    <div class="profile-header">
+        <img id="avatar" class="avatar skeleton">
+        <div>
+            <h1 id="username" class="skeleton" style="width: 200px; height: 30px;"></h1>
+            <div class="stats">
+                <div class="stat">
+                    <div id="projects-count" class="stat-value">-</div>
+                    <div class="stat-label">Projects</div>
+                </div>
+                <div class="stat">
+                    <div id="likes-count" class="stat-value">-</div>
+                    <div class="stat-label">Likes</div>
+                </div>
+                <div class="stat">
+                    <div id="views-count" class="stat-value">-</div>
+                    <div class="stat-label">Views</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="projects-grid" class="projects-grid"></div>
+    <div id="loading" class="loading">Loading projects...</div>
+    <button id="load-more" class="load-more" style="display: none;">Load More</button>
+</div>
+
+<script>
+let currentCursor = null;
+let isLoading = false;
+
+async function loadProfile() {
+    const user = await window.websim.getCreatedBy();
+    const avatar = document.getElementById('avatar');
+    const username = document.getElementById('username');
+    
+    avatar.src = `https://images.websim.ai/avatar/${user.username}`;
+    avatar.classList.remove('skeleton');
+    username.textContent = `@${user.username}`;
+    username.classList.remove('skeleton');
+    
+    loadProjects();
+}
+
+async function loadProjects() {
+    if (isLoading) return;
+    isLoading = true;
+    
+    const user = await window.websim.getCreatedBy();
+    const params = new URLSearchParams({
+        first: 12,
+        posted: true
+    });
+    
+    if (currentCursor) {
+        params.append('after', currentCursor);
+    }
+    
+    try {
+        const response = await fetch(`/api/v1/users/${user.username}/projects?${params}`);
+        const data = await response.json();
+        
+        updateStats(data.projects.data);
+        renderProjects(data.projects.data);
+        
+        const loadMoreBtn = document.getElementById('load-more');
+        loadMoreBtn.style.display = data.projects.meta.has_next_page ? 'block' : 'none';
+        
+        if (data.projects.meta.end_cursor) {
+            currentCursor = data.projects.meta.end_cursor;
+        }
+        
+        document.getElementById('loading').style.display = 'none';
+    } catch (error) {
+        console.error('Error loading projects:', error);
+    }
+    
+    isLoading = false;
+}
+
+function updateStats(projects) {
+    let totalLikes = 0;
+    let totalViews = 0;
+    
+    projects.forEach(({project}) => {
+        totalLikes += project.stats.likes;
+        totalViews += project.stats.views;
+    });
+    
+    document.getElementById('projects-count').textContent = projects.length;
+    document.getElementById('likes-count').textContent = totalLikes;
+    document.getElementById('views-count').textContent = totalViews;
+}
+
+function renderProjects(projects) {
+    const grid = document.getElementById('projects-grid');
+    
+    projects.forEach(({project, site}) => {
+        const card = document.createElement('div');
+        card.className = 'project-card';
+        
+        const imageUrl = site ? `https://images.websim.ai/v1/site/${site.id}/600` : 'placeholder.jpg';
+        
+        card.innerHTML = `
+            <img class="project-image" src="${imageUrl}" alt="${project.title || 'Untitled Project'}">
+            <div class="project-info">
+                <div class="project-title">${project.title || 'Untitled Project'}</div>
+                <div class="project-stats">
+                    <span>👁️ ${project.stats.views}</span>
+                    <span>❤️ ${project.stats.likes}</span>
+                </div>
+            </div>
+        `;
+        
+        card.addEventListener('click', () => {
+            window.location.href = `/p/${project.id}`;
+        });
+        
+        grid.appendChild(card);
+    });
+}
+
+document.getElementById('load-more').addEventListener('click', loadProjects);
+
+// Start loading the profile
+loadProfile();
+</script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body></html>
