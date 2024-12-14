@@ -73,6 +73,30 @@ body {
     font-size: 14px;
 }
 
+.search-container {
+    margin: 20px 0;
+    display: flex;
+    gap: 10px;
+}
+
+.search-input {
+    flex: 1;
+    padding: 12px;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    font-size: 16px;
+}
+
+.search-button {
+    background: #2196F3;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+}
+
 .projects-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -183,6 +207,11 @@ body {
         </div>
     </div>
 
+    <div class="search-container">
+        <input type="text" id="search-input" class="search-input" placeholder="Search projects...">
+        <button id="search-button" class="search-button">Search</button>
+    </div>
+
     <div id="projects-grid" class="projects-grid"></div>
     <div id="loading" class="loading">Loading projects...</div>
     <button id="load-more" class="load-more" style="display: none;">Load More</button>
@@ -194,15 +223,16 @@ let isLoading = false;
 let totalProjects = 0;
 let totalLikes = 0;
 let totalViews = 0;
+let currentSearch = '';
+const USERNAME = 'api'; // Hardcoded username
 
 async function loadProfile() {
-    const user = await window.websim.getCreatedBy();
     const avatar = document.getElementById('avatar');
     const username = document.getElementById('username');
     
-    avatar.src = `https://images.websim.ai/avatar/${user.username}`;
+    avatar.src = `https://images.websim.ai/avatar/${USERNAME}`;
     avatar.classList.remove('skeleton');
-    username.textContent = `@${user.username}`;
+    username.textContent = `@${USERNAME}`;
     username.classList.remove('skeleton');
     
     await loadAllProjectStats();
@@ -210,7 +240,6 @@ async function loadProfile() {
 }
 
 async function loadAllProjectStats() {
-    const user = await window.websim.getCreatedBy();
     let cursor = null;
     totalProjects = 0;
     totalLikes = 0;
@@ -227,7 +256,7 @@ async function loadAllProjectStats() {
         }
         
         try {
-            const response = await fetch(`/api/v1/users/${user.username}/projects?${params}`);
+            const response = await fetch(`/api/v1/users/${USERNAME}/projects?${params}`);
             const data = await response.json();
             
             data.projects.data.forEach(({project}) => {
@@ -259,19 +288,26 @@ async function loadProjects() {
     if (isLoading) return;
     isLoading = true;
     
-    const user = await window.websim.getCreatedBy();
     const params = new URLSearchParams({
         first: 12,
         posted: true
     });
+    
+    if (currentSearch) {
+        params.append('query', currentSearch);
+    }
     
     if (currentCursor) {
         params.append('after', currentCursor);
     }
     
     try {
-        const response = await fetch(`/api/v1/users/${user.username}/projects?${params}`);
+        const response = await fetch(`/api/v1/users/${USERNAME}/projects?${params}`);
         const data = await response.json();
+        
+        if (!currentCursor) {
+            document.getElementById('projects-grid').innerHTML = '';
+        }
         
         renderProjects(data.projects.data);
         
@@ -318,6 +354,14 @@ function renderProjects(projects) {
     });
 }
 
+function handleSearch() {
+    const searchInput = document.getElementById('search-input');
+    currentSearch = searchInput.value.trim();
+    currentCursor = null;
+    document.getElementById('loading').style.display = 'block';
+    loadProjects();
+}
+
 // Intersection Observer for infinite scroll
 const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
@@ -329,7 +373,15 @@ const observer = new IntersectionObserver((entries) => {
     rootMargin: '100px'
 });
 
+// Event Listeners
 document.getElementById('load-more').addEventListener('click', loadProjects);
+document.getElementById('search-button').addEventListener('click', handleSearch);
+document.getElementById('search-input').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        handleSearch();
+    }
+});
+
 observer.observe(document.getElementById('load-more'));
 
 // Start loading the profile
