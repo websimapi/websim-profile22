@@ -86,6 +86,7 @@ body {
     overflow: hidden;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     transition: transform 0.2s;
+    cursor: pointer;
 }
 
 .project-card:hover {
@@ -190,6 +191,9 @@ body {
 <script>
 let currentCursor = null;
 let isLoading = false;
+let totalProjects = 0;
+let totalLikes = 0;
+let totalViews = 0;
 
 async function loadProfile() {
     const user = await window.websim.getCreatedBy();
@@ -201,7 +205,54 @@ async function loadProfile() {
     username.textContent = `@${user.username}`;
     username.classList.remove('skeleton');
     
+    await loadAllProjectStats();
     loadProjects();
+}
+
+async function loadAllProjectStats() {
+    const user = await window.websim.getCreatedBy();
+    let cursor = null;
+    totalProjects = 0;
+    totalLikes = 0;
+    totalViews = 0;
+    
+    while (true) {
+        const params = new URLSearchParams({
+            first: 100,
+            posted: true
+        });
+        
+        if (cursor) {
+            params.append('after', cursor);
+        }
+        
+        try {
+            const response = await fetch(`/api/v1/users/${user.username}/projects?${params}`);
+            const data = await response.json();
+            
+            data.projects.data.forEach(({project}) => {
+                totalProjects++;
+                totalLikes += project.stats.likes;
+                totalViews += project.stats.views;
+            });
+            
+            updateStatsDisplay();
+            
+            if (!data.projects.meta.has_next_page) {
+                break;
+            }
+            cursor = data.projects.meta.end_cursor;
+        } catch (error) {
+            console.error('Error loading all project stats:', error);
+            break;
+        }
+    }
+}
+
+function updateStatsDisplay() {
+    document.getElementById('projects-count').textContent = totalProjects;
+    document.getElementById('likes-count').textContent = totalLikes;
+    document.getElementById('views-count').textContent = totalViews;
 }
 
 async function loadProjects() {
@@ -222,7 +273,6 @@ async function loadProjects() {
         const response = await fetch(`/api/v1/users/${user.username}/projects?${params}`);
         const data = await response.json();
         
-        updateStats(data.projects.data);
         renderProjects(data.projects.data);
         
         const loadMoreBtn = document.getElementById('load-more');
@@ -240,20 +290,6 @@ async function loadProjects() {
     isLoading = false;
 }
 
-function updateStats(projects) {
-    let totalLikes = 0;
-    let totalViews = 0;
-    
-    projects.forEach(({project}) => {
-        totalLikes += project.stats.likes;
-        totalViews += project.stats.views;
-    });
-    
-    document.getElementById('projects-count').textContent = projects.length;
-    document.getElementById('likes-count').textContent = totalLikes;
-    document.getElementById('views-count').textContent = totalViews;
-}
-
 function renderProjects(projects) {
     const grid = document.getElementById('projects-grid');
     
@@ -264,7 +300,7 @@ function renderProjects(projects) {
         const imageUrl = site ? `https://images.websim.ai/v1/site/${site.id}/600` : 'placeholder.jpg';
         
         card.innerHTML = `
-            <img class="project-image" src="${imageUrl}" alt="${project.title || 'Untitled Project'}">
+            <img class="project-image" src="${imageUrl}" alt="${project.title || 'Untitled Project'}" loading="lazy">
             <div class="project-info">
                 <div class="project-title">${project.title || 'Untitled Project'}</div>
                 <div class="project-stats">
@@ -282,7 +318,19 @@ function renderProjects(projects) {
     });
 }
 
+// Intersection Observer for infinite scroll
+const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting && !isLoading) {
+            loadProjects();
+        }
+    });
+}, {
+    rootMargin: '100px'
+});
+
 document.getElementById('load-more').addEventListener('click', loadProjects);
+observer.observe(document.getElementById('load-more'));
 
 // Start loading the profile
 loadProfile();
