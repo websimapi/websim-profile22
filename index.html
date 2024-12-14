@@ -241,6 +241,12 @@ body {
         <button class="tab active" data-tab="projects">Projects</button>
         <button class="tab" data-tab="likes">Liked Projects</button>
         <button class="tab" data-tab="history">History</button>
+        <button class="tab" data-tab="favorites">Favorites</button>
+    </div>
+
+    <div id="favorites-controls" style="display: none; margin: 20px 0;">
+        <button id="add-to-favorites" class="search-button">Add Current to Favorites</button>
+        <button id="remove-from-favorites" class="search-button" style="background: #f44336;">Remove from Favorites</button>
     </div>
 
     <div class="search-container">
@@ -264,6 +270,56 @@ let totalHistory = 0;
 let currentSearch = '';
 let currentTab = 'projects';
 const USERNAME = 'api';
+let publicKey = null;
+let isApiUser = false;
+
+function generateKeyPair() {
+    return window.crypto.subtle.generateKey(
+        {
+            name: "ECDSA",
+            namedCurve: "P-256"
+        },
+        true,
+        ["sign", "verify"]
+    );
+}
+
+async function exportPublicKey(key) {
+    const exported = await window.crypto.subtle.exportKey("spki", key);
+    return btoa(String.fromCharCode.apply(null, new Uint8Array(exported)));
+}
+
+async function setupKeys() {
+    const createdBy = await window.websim.getCreatedBy();
+    isApiUser = createdBy === 'api';
+    
+    if (!isApiUser) return;
+
+    const storedKeyData = localStorage.getItem('api_favorites_auth');
+    
+    if (!storedKeyData) {
+        const pin = prompt('Please set a PIN to protect your private key:');
+        if (!pin) return;
+        
+        const keyPair = await generateKeyPair();
+        const publicKeyStr = await exportPublicKey(keyPair.publicKey);
+        
+        const encryptedPrivateKey = await window.crypto.subtle.exportKey(
+            "pkcs8",
+            keyPair.privateKey
+        );
+        
+        const keyData = {
+            publicKey: publicKeyStr,
+            privateKey: btoa(String.fromCharCode.apply(null, new Uint8Array(encryptedPrivateKey)))
+        };
+        
+        localStorage.setItem('api_favorites_auth', JSON.stringify(keyData));
+        
+        await navigator.clipboard.writeText(publicKeyStr);
+        alert('Public key has been copied to clipboard. Please provide this in the next prompt.');
+    }
+}
 
 async function loadProfile() {
     const avatar = document.getElementById('avatar');
@@ -274,7 +330,6 @@ async function loadProfile() {
     username.textContent = `@${USERNAME}`;
     username.classList.remove('skeleton');
     
-    // Load all stats in parallel
     await Promise.all([
         loadAllProjectStats(),
         loadLikedProjectsCount(),
@@ -413,7 +468,14 @@ async function loadContent() {
     
     try {
         let response;
-        if (currentTab === 'likes') {
+        if (currentTab === 'favorites') {
+            const response = await fetch(`/api/v1/users/${USERNAME}/collection/favorites`);
+            const data = await response.json();
+            renderProjects(data.projects.data);
+            const loadMoreBtn = document.getElementById('load-more');
+            loadMoreBtn.style.display = data.projects.meta.has_next_page ? 'block' : 'none';
+            currentCursor = data.projects.meta.end_cursor;
+        } else if (currentTab === 'likes') {
             response = await fetch(`/api/v1/users/${USERNAME}/likes?${params}`);
         } else {
             response = await fetch(`/api/v1/users/${USERNAME}/projects?${params}`);
@@ -493,6 +555,11 @@ document.querySelectorAll('.tab').forEach(tab => {
         currentCursor = null;
         document.getElementById('loading').style.display = 'block';
         document.getElementById('projects-grid').innerHTML = '';
+        
+        const favoritesControls = document.getElementById('favorites-controls');
+        favoritesControls.style.display = 
+            currentTab === 'favorites' && isApiUser ? 'block' : 'none';
+        
         loadContent();
     });
 });
@@ -521,6 +588,7 @@ observer.observe(document.getElementById('load-more'));
 
 // Start loading the profile
 loadProfile();
+setupKeys().catch(console.error);
 </script>
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
 </body></html>
