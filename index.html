@@ -548,7 +548,7 @@ function handleSearch() {
 
 // Tab handling
 document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => {
+    tab.addEventListener('click', async () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         currentTab = tab.dataset.tab;
@@ -557,6 +557,11 @@ document.querySelectorAll('.tab').forEach(tab => {
         document.getElementById('projects-grid').innerHTML = '';
         
         const favoritesControls = document.getElementById('favorites-controls');
+        
+        if (currentTab === 'favorites') {
+            await setupKeys();
+        }
+        
         favoritesControls.style.display = 
             currentTab === 'favorites' && isApiUser ? 'block' : 'none';
         
