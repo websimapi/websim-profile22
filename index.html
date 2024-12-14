@@ -73,6 +73,28 @@ body {
     font-size: 14px;
 }
 
+.tabs {
+    display: flex;
+    gap: 10px;
+    margin: 20px 0;
+}
+
+.tab {
+    padding: 12px 24px;
+    background: #fff;
+    border: 2px solid #2196F3;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    color: #2196F3;
+    transition: all 0.3s;
+}
+
+.tab.active {
+    background: #2196F3;
+    color: white;
+}
+
 .search-container {
     margin: 20px 0;
     display: flex;
@@ -207,6 +229,12 @@ body {
         </div>
     </div>
 
+    <div class="tabs">
+        <button class="tab active" data-tab="projects">Projects</button>
+        <button class="tab" data-tab="likes">Liked Projects</button>
+        <button class="tab" data-tab="history">History</button>
+    </div>
+
     <div class="search-container">
         <input type="text" id="search-input" class="search-input" placeholder="Search projects...">
         <button id="search-button" class="search-button">Search</button>
@@ -224,7 +252,8 @@ let totalProjects = 0;
 let totalLikes = 0;
 let totalViews = 0;
 let currentSearch = '';
-const USERNAME = 'api'; // Hardcoded username
+let currentTab = 'projects';
+const USERNAME = 'api';
 
 async function loadProfile() {
     const avatar = document.getElementById('avatar');
@@ -236,7 +265,7 @@ async function loadProfile() {
     username.classList.remove('skeleton');
     
     await loadAllProjectStats();
-    loadProjects();
+    loadContent();
 }
 
 async function loadAllProjectStats() {
@@ -284,16 +313,15 @@ function updateStatsDisplay() {
     document.getElementById('views-count').textContent = totalViews;
 }
 
-async function loadProjects() {
+async function loadContent() {
     if (isLoading) return;
     isLoading = true;
     
     const params = new URLSearchParams({
-        first: 12,
-        posted: true
+        first: 12
     });
     
-    if (currentSearch) {
+    if (currentSearch && currentTab === 'projects') {
         params.append('query', currentSearch);
     }
     
@@ -301,26 +329,42 @@ async function loadProjects() {
         params.append('after', currentCursor);
     }
     
+    if (currentTab === 'projects') {
+        params.append('posted', true);
+    }
+    
     try {
-        const response = await fetch(`/api/v1/users/${USERNAME}/projects?${params}`);
+        let response;
+        if (currentTab === 'likes') {
+            response = await fetch(`/api/v1/users/${USERNAME}/likes?${params}`);
+        } else {
+            response = await fetch(`/api/v1/users/${USERNAME}/projects?${params}`);
+        }
+        
         const data = await response.json();
         
         if (!currentCursor) {
             document.getElementById('projects-grid').innerHTML = '';
         }
         
-        renderProjects(data.projects.data);
-        
-        const loadMoreBtn = document.getElementById('load-more');
-        loadMoreBtn.style.display = data.projects.meta.has_next_page ? 'block' : 'none';
-        
-        if (data.projects.meta.end_cursor) {
+        if (currentTab === 'likes') {
+            renderProjects(data.likes.data.map(item => ({
+                project: item.project,
+                site: item.site
+            })));
+            const loadMoreBtn = document.getElementById('load-more');
+            loadMoreBtn.style.display = data.likes.meta.has_next_page ? 'block' : 'none';
+            currentCursor = data.likes.meta.end_cursor;
+        } else {
+            renderProjects(data.projects.data);
+            const loadMoreBtn = document.getElementById('load-more');
+            loadMoreBtn.style.display = data.projects.meta.has_next_page ? 'block' : 'none';
             currentCursor = data.projects.meta.end_cursor;
         }
         
         document.getElementById('loading').style.display = 'none';
     } catch (error) {
-        console.error('Error loading projects:', error);
+        console.error('Error loading content:', error);
     }
     
     isLoading = false;
@@ -359,14 +403,27 @@ function handleSearch() {
     currentSearch = searchInput.value.trim();
     currentCursor = null;
     document.getElementById('loading').style.display = 'block';
-    loadProjects();
+    loadContent();
 }
+
+// Tab handling
+document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        currentTab = tab.dataset.tab;
+        currentCursor = null;
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('projects-grid').innerHTML = '';
+        loadContent();
+    });
+});
 
 // Intersection Observer for infinite scroll
 const observer = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
         if (entry.isIntersecting && !isLoading) {
-            loadProjects();
+            loadContent();
         }
     });
 }, {
@@ -374,7 +431,7 @@ const observer = new IntersectionObserver((entries) => {
 });
 
 // Event Listeners
-document.getElementById('load-more').addEventListener('click', loadProjects);
+document.getElementById('load-more').addEventListener('click', loadContent);
 document.getElementById('search-button').addEventListener('click', handleSearch);
 document.getElementById('search-input').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
